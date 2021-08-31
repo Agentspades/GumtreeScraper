@@ -26,7 +26,7 @@ namespace GumTreeScrape
         readonly string clickSendTo = "CHANGE_ME"; // number to send the message to must be the full number including country code (example: +61)
         readonly string clickSendFrom = "Agentspades"; // this can be anything you want dependant on your country
         readonly string searchUrl = "CHANGE_ME"; // Example link: https://www.gumtree.com.au/s-electronics-computer/gold-coast/
-        readonly string trailingUrl = "/k0c18560l3006035"; // This is the last part of the url (This may change in future)
+        readonly string trailingUrl = "CHANGE_ME"; // This is the last part of the url
         readonly string DOMClass = "user-ad-collection-new-design__wrapper--row"; // This might change in future 
 
         Control sentControl;
@@ -205,6 +205,12 @@ namespace GumTreeScrape
                         string price = GetLink(search, "1");
                         //get the shortend link
                         string shortLink = LinkShorten(newFirst);
+                        //Check if ther is a shortLink being returned
+                        if(shortLink.Length == 0)
+                        {
+                            //exit the loop if no short link was returned
+                            break;
+                        }//end inner if
                         //assemble the message
                         string message = "New Listing for \"" + search.Term + "\"\nPrice: "
                           + price + "\n" + shortLink;
@@ -409,32 +415,42 @@ namespace GumTreeScrape
         **************************************************************************/
         private string GetLink(Search search, string id)
         {
-            int topCount = 0;
-            string firstLink = "";
-            //assemble the search link
-            string searchLink = searchUrl + search.Term.Replace(" ", "+")
-                + trailingUrl + search.Radius;
-            //get the webpage
-            HtmlWeb web = new HtmlWeb();
-            HtmlAgilityPack.HtmlDocument doc = web.Load(searchLink);
-            //check if the webpage contains paid listings
-            if (doc.DocumentNode.SelectNodes("//span[@class='user-ad-row-new-design__flag-top']") != null)
+            try
             {
-                HtmlNode[] topArr = doc.DocumentNode.SelectNodes("//span[@class='user-ad-row-new-design__flag-top']").ToArray();
-                //count paid listings
-                topCount = topArr.Count();
-            }//end if
-            //get the nodes for the listings
-            HtmlNode[] nodes = doc.DocumentNode.SelectNodes("//div[@class='" + DOMClass + "']//a").ToArray();
-            //get the first listing after the paid ones
-            firstLink = (nodes[topCount].Attributes["href"].Value.ToString());
-            if(id.Equals("0"))
-            {
-                return firstLink;
+                int topCount = 0;
+                string firstLink = "";
+                //assemble the search link
+                string searchLink = searchUrl + search.Term.Replace(" ", "+")
+                    + trailingUrl + search.Radius;
+                //get the webpage
+                HtmlWeb web = new HtmlWeb();
+                HtmlAgilityPack.HtmlDocument doc = web.Load(searchLink);
+                //check if the webpage contains paid listings
+                if (doc.DocumentNode.SelectNodes("//span[@class='user-ad-row-new-design__flag-top']") != null)
+                {
+                    HtmlNode[] topArr = doc.DocumentNode.SelectNodes("//span[@class='user-ad-row-new-design__flag-top']").ToArray();
+                    //count paid listings
+                    topCount = topArr.Count();
+                }//end if
+                 //get the nodes for the listings
+                HtmlNode[] nodes = doc.DocumentNode.SelectNodes("//div[@class='" + DOMClass + "']//a").ToArray();
+                //get the first listing after the paid ones
+                firstLink = (nodes[topCount].Attributes["href"].Value.ToString());
+                if (id.Equals("0"))
+                {
+                    return firstLink;
+                }
+                else if (id.Equals("1"))
+                {
+                    return GetPrice(topCount, nodes);
+                }
             }
-            if(id.Equals("1"))
+            catch(Exception e)
             {
-                return GetPrice(topCount, nodes);
+                MessageBox.Show("There was an error loading gumtrees page\nCheck your params and try again", "ERROR",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Logger logger = LogManager.GetLogger("filelogger");
+                logger.Trace(e.StackTrace);
             }
             return "";
         }//end GetLink() method
@@ -464,53 +480,63 @@ namespace GumTreeScrape
         **************************************************************************/
         private void SendMsg(string msg)
         {
-            //setup the config for the clicksend API
-            var config = new Configuration()
+            try
             {
-                Username = clickSendUser,
-                Password = clickSendPass
-            };
-            //set the config to a smsApi object
-            var smsApi = new SMSApi(config);
-            //declare an object to hold the message data to be sent
-            var smsList = new List<SmsMessage>
-                        {
-                            //sms message data
-                            new SmsMessage(
-                                from: clickSendFrom,
-                                to: clickSendTo,
-                                body: msg,
-                                source: "sdk"
-                                )
-                        };//end message List
-                          //declare and initalize an smsCollection object using the smsList created above
-            var smsCollection = new SmsMessageCollection(smsList);
-            //send the sms data to the api and get the Json response
-            var response = smsApi.SmsSendPost(smsCollection);
-            //parse the Json respones
-            JObject jResponse = JObject.Parse(response);
-            //get the sms status and the cost and number of messages for the API transaction
-            string status = jResponse["response_code"].ToString();
-            JObject jObj = (JObject)jResponse["data"];
-            decimal cost = decimal.Parse(jObj["total_price"].ToString());
-            int msgCount = int.Parse(jObj["total_count"].ToString());
-            //if message was successful then update the textBox controls otherwise show an error
-            if (status.Equals("SUCCESS"))
-            {
-                //update the textBox controls from any of the running threads
-                sentControl.BeginInvoke((MethodInvoker)delegate ()
+                //setup the config for the clicksend API
+                var config = new Configuration()
                 {
-                    sent_TextBox.Text = (int.Parse(sent_TextBox.Text) + msgCount).ToString();
-                });
-                costControl.BeginInvoke((MethodInvoker)delegate ()
-                {
-                    cost_TextBox.Text = (decimal.Parse(cost_TextBox.Text) + cost).ToString();
-                });
-            }//end if
-            else
+                    Username = clickSendUser,
+                    Password = clickSendPass
+                };
+                //set the config to a smsApi object
+                var smsApi = new SMSApi(config);
+                //declare an object to hold the message data to be sent
+                var smsList = new List<SmsMessage>
             {
-                MessageBox.Show("Text message not sent", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }//end else
+                //sms message data
+                new SmsMessage(
+                    from: clickSendFrom,
+                    to: clickSendTo,
+                    body: msg,
+                    source: "sdk"
+                    )
+            };//end message List
+              //declare and initalize an smsCollection object using the smsList created above
+                var smsCollection = new SmsMessageCollection(smsList);
+                //send the sms data to the api and get the Json response
+                var response = smsApi.SmsSendPost(smsCollection);
+                //parse the Json respones
+                JObject jResponse = JObject.Parse(response);
+                //get the sms status and the cost and number of messages for the API transaction
+                string status = jResponse["response_code"].ToString();
+                JObject jObj = (JObject)jResponse["data"];
+                decimal cost = decimal.Parse(jObj["total_price"].ToString());
+                int msgCount = int.Parse(jObj["total_count"].ToString());
+                //if message was successful then update the textBox controls otherwise show an error
+                if (status.Equals("SUCCESS"))
+                {
+                    //update the textBox controls from any of the running threads
+                    sentControl.BeginInvoke((MethodInvoker)delegate ()
+                    {
+                        sent_TextBox.Text = (int.Parse(sent_TextBox.Text) + msgCount).ToString();
+                    });
+                    costControl.BeginInvoke((MethodInvoker)delegate ()
+                    {
+                        cost_TextBox.Text = (decimal.Parse(cost_TextBox.Text) + cost).ToString();
+                    });
+                }//end if
+                else
+                {
+                    MessageBox.Show("Text message not sent", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }//end else
+            }
+            catch(Exception e)
+            {
+                MessageBox.Show("There was an error when sending the SMS message\nCheck your params and try again", 
+                    "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Logger logger = LogManager.GetLogger("filelogger");
+                logger.Trace(e.StackTrace);
+            }
         }//end SendMsg() method
 
         /**************************************************************************
@@ -521,14 +547,24 @@ namespace GumTreeScrape
         **************************************************************************/
         private string LinkShorten(string link)
         {
-            //hold the full gumtree link
-            string longLink = "https://www.gumtree.com.au" + link;
+            string shortLink = "";
+            try
+            {
+                //hold the full gumtree link
+                string longLink = "https://www.gumtree.com.au" + link;
 
-            //shorten the link to reduce character count for messages
-            var bitly = new Bitly(bitlyAccessToken);
-            var linkResponse = bitly.PostShorten(longLink);
-            var shortLink = linkResponse.Result.Link;
-
+                //shorten the link to reduce character count for messages
+                var bitly = new Bitly(bitlyAccessToken);
+                var linkResponse = bitly.PostShorten(longLink);
+                shortLink = linkResponse.Result.Link;
+            }
+            catch(Exception e)
+            {
+                MessageBox.Show("There was error when shortening your URL\nCheck your params and try again.", 
+                    "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Logger logger = LogManager.GetLogger("filelogger");
+                logger.Trace(e.StackTrace);
+            }
             return shortLink;
         }//end LinkShorten() method
     }//end class
